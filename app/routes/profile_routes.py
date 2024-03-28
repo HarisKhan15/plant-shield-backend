@@ -1,8 +1,10 @@
 from datetime import datetime
 from app import app, db
 from flask import request, jsonify, send_file
+from app.exceptions import *
 from app.models import *
 from app.static import *
+from app.routes import image_routes
 
 # Create Profile
 @app.route('/profile', methods=['POST'])
@@ -43,26 +45,14 @@ def create_profile():
 
         if 'file' in request.files:
             image_file = request.files['file']
-            image_data = image_file.read()
-            image_name = image_file.filename
-            image_extension = image_name.rsplit('.', 1)[1].lower() if '.' in image_name else ''
-
-            image_entity_type = ImageEntityType.query.filter_by(entity_name=EntityTypes.Profile).first()  
-
-            if not image_entity_type:
-                return jsonify({'error': 'Image Entity Type ID not found for the given entity name'}), 404
-            
-            image = Image(
-                data=image_data,
-                image_name=image_name,
-                image_extension=image_extension,
-                entity_id=profile.id,
-                entity_type_id=image_entity_type.id,
-                created_date=datetime.utcnow()
-            )
-            db.session.add(image)
-            db.session.commit()
+            image_routes.save_image_by_entity_and_entity_type(image_file= image_file, entity_id= profile.id, entity_name= EntityTypes.Profile)
         return jsonify({'error': 'Profile created successfully'}), 200
+    except EntityTypeException as ex:
+        db.session.rollback()
+        return jsonify({'error': ex.message}), 404
+    except ImageException as ex:
+        db.session.rollback()
+        return jsonify({'error': ex.message}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -76,8 +66,7 @@ def get_profile(profile_id):
     profile = Profile.query.get(profile_id)
     
     if profile:
-        image_entity_type = ImageEntityType.query.filter_by(entity_name=EntityTypes.Profile).first()
-        image = Image.query.filter_by(entity_id=profile.id, entity_type_id=image_entity_type.id).first() 
+        image = image_routes.get_image_by_entity_id_and_entity_type(entity_id=profile_id, entity_name=EntityTypes.Profile)
         
         image_json = image.to_dict() if image else None
         
@@ -110,31 +99,20 @@ def update_profile(profile_id):
             profile.location = data.get('location', profile.location)
             
             db.session.commit()
-            if request.files['profile_picture']:
+            if request.files['profile_picture']: 
                 new_image = request.files['profile_picture']
-                image_entity_type = ImageEntityType.query.filter_by(entity_name=EntityTypes.Profile).first()
-                image = Image.query.filter_by(entity_id=profile.id, entity_type_id=image_entity_type.id).first()  # Assuming entity_type_id for Profile is 1
+                image = image_routes.get_image_by_entity_id_and_entity_type(entity_id=profile_id, entity_name=EntityTypes.Profile)
                 if image:
-                    image.data = new_image.read()
-                    image.image_name = new_image.filename
-                    image.image_extention = new_image.filename.rsplit('.', 1)[1].lower() if '.' in image.image_name else ''
-                    db.session.commit()
+                    image_routes.update_image(old_image= image, new_image= new_image)
                 else:
-                    image_data = new_image.read()
-                    image_name = new_image.filename
-                    image_extension = image_name.rsplit('.', 1)[1].lower() if '.' in image_name else ''
-                    image = Image(
-                        data=image_data,
-                        image_name=image_name,
-                        image_extension=image_extension,
-                        entity_id=profile.id,
-                        entity_type_id=image_entity_type.id,
-                        created_date=datetime.utcnow()
-                    )
-                    db.session.add(image)
-                    db.session.commit()
-            
+                    image_routes.save_image_by_entity_and_entity_type(new_image,profile_id,EntityTypes.Profile)
             return jsonify({'message': 'Profile updated successfully'}), 200
+        except EntityTypeException as e:
+            db.session.rollback()
+            return jsonify({'error' : e.message}), 500
+        except ImageException as e:
+            db.session.rollback()
+            return jsonify({'error': e.message}), 500
         except Exception as e:
             db.session.rollback()
             return jsonify({'error': str(e)}), 500
@@ -151,8 +129,7 @@ def delete_profile(profile_id):
             db.session.delete(profile)
             db.session.commit()
             
-            image_entity_type = ImageEntityType.query.filter_by(entity_name=EntityTypes.Profile).first()
-            image = Image.query.filter_by(entity_id=profile.id, entity_type_id=image_entity_type.id).first()
+            image = image_routes.get_image_by_entity_id_and_entity_type(entity_id=profile_id, entity_name=EntityTypes.Profile)
             if image:
                 db.session.delete(image)
                 db.session.commit()

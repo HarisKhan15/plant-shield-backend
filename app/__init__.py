@@ -10,6 +10,7 @@ bcrypt = Bcrypt(app)
 from app.routes import *
 from app.models import *
 from app.static import *
+from app.detection_model import *
 
 with app.app_context():
     # db.drop_all()

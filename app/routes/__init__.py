@@ -3,6 +3,7 @@ from .profile_routes import *
 from .image_entity_type_routes import *
 from .image_routes import *
 from .plant_routes import *
+from .user_plant_routes import *
 
 __all__ = []
 
